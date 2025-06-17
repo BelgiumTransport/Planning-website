@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Planning App met Accounts</title>
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 min-h-screen flex items-center justify-center p-4">
+
+  <!-- Loginpagina -->
+  <div id="loginPage" class="w-full max-w-sm p-6 bg-white rounded-xl shadow-md">
+    <h2 class="text-2xl font-bold mb-4 text-center">Inloggen</h2>
+    <input id="username" type="text" placeholder="Gebruikersnaam" class="w-full mb-3 p-2 border rounded" />
+    <input id="password" type="password" placeholder="Wachtwoord" class="w-full mb-3 p-2 border rounded" />
+    <button onclick="login()" class="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700">Log in</button>
+    <p id="loginError" class="text-red-500 mt-2 hidden text-sm">Foutieve inloggegevens</p>
+  </div>
+
+  <!-- Navigatie (voor admin na inloggen) -->
+  <nav id="navBar" class="hidden w-full max-w-lg mb-4 flex justify-end gap-4">
+    <button onclick="showPlanning()" class="bg-gray-200 py-2 px-4 rounded hover:bg-gray-300">Planning</button>
+    <button id="accountsBtn" onclick="showAccounts()" class="bg-gray-200 py-2 px-4 rounded hover:bg-gray-300 hidden">Accounts beheren</button>
+    <button onclick="logout()" class="bg-red-500 text-white py-2 px-4 rounded hover:bg-red-600">Uitloggen</button>
+  </nav>
+
+  <!-- Planningpagina -->
+  <div id="planningPage" class="hidden w-full max-w-lg p-6 bg-white rounded-xl shadow-md">
+    <h2 class="text-2xl font-bold mb-4 text-center">Maak je planning</h2>
+    <div class="flex flex-col gap-3">
+      <input id="stelplaatsInput" type="text" placeholder="Stelplaats" class="p-2 border rounded" />
+      
+      <div class="flex gap-2">
+        <div class="flex flex-col flex-1">
+          <label for="timeFrom" class="mb-1 font-semibold">Van (uur:minuut)</label>
+          <input id="timeFrom" type="time" class="p-2 border rounded" />
+        </div>
+        <div class="flex flex-col flex-1">
+          <label for="timeTo" class="mb-1 font-semibold">Tot (uur:minuut)</label>
+          <input id="timeTo" type="time" class="p-2 border rounded" />
+        </div>
+      </div>
+
+      <input id="lijnInput" type="text" placeholder="Lijn" class="p-2 border rounded" />
+      <input id="robloxUserInput" type="text" placeholder="Roblox username" class="p-2 border rounded" />
+      <button onclick="addTask()" class="bg-green-600 text-white py-2 rounded hover:bg-green-700">Toevoegen</button>
+    </div>
+    <ul id="taskList" class="mt-5 space-y-2"></ul>
+    <p id="discordResponse" class="mt-3 text-center text-green-600 font-semibold hidden"></p>
+    <p id="discordError" class="mt-3 text-center text-red-600 font-semibold hidden"></p>
+  </div>
+
+  <!-- Accounts beheren pagina (alleen voor admin) -->
+  <div id="accountsPage" class="hidden w-full max-w-lg p-6 bg-white rounded-xl shadow-md">
+    <h2 class="text-2xl font-bold mb-4 text-center">Accounts beheren</h2>
+    <div class="flex flex-col gap-3">
+      <input id="newUserInput" type="text" placeholder="Nieuwe gebruikersnaam" class="p-2 border rounded" />
+      <input id="newPassInput" type="password" placeholder="Nieuw wachtwoord" class="p-2 border rounded" />
+      <button onclick="addAccount()" class="bg-blue-600 text-white py-2 rounded hover:bg-blue-700">Account aanmaken</button>
+    </div>
+    <ul id="accountsList" class="mt-5 space-y-2"></ul>
+  </div>
+
+<script>
+const discordWebhookURL = "https://discord.com/api/webhooks/1384624248160518405/_uPGRdSmZ0MuTntNFvjBW0WU9p-QM-HgMDNa4rtmOyw3sEHS38RMjV2wZMm4XYWu0Fza";
+
+// Accountbeheer in localStorage, default admin = 1234
+function getAccounts() {
+  const data = localStorage.getItem('accounts');
+  if (data) return JSON.parse(data);
+  return { admin: '1234' };
+}
+function saveAccounts(accounts) {
+  localStorage.setItem('accounts', JSON.stringify(accounts));
+}
+
+function login() {
+  const user = document.getElementById('username').value.trim();
+  const pass = document.getElementById('password').value.trim();
+  const error = document.getElementById('loginError');
+  const accounts = getAccounts();
+
+  if (accounts[user] && accounts[user] === pass) {
+    error.classList.add('hidden');
+    document.getElementById('loginPage').classList.add('hidden');
+    document.getElementById('navBar').classList.remove('hidden');
+    window.currentUser = user;
+
+    const accountsBtn = document.getElementById('accountsBtn');
+    if (user === 'admin') {
+      accountsBtn.classList.remove('hidden');
+      showAccounts();
+    } else {
+      accountsBtn.classList.add('hidden');
+      showPlanning();
+    }
+  } else {
+    error.classList.remove('hidden');
+  }
+}
+
+function logout() {
+  window.currentUser = null;
+  document.getElementById('navBar').classList.add('hidden');
+  document.getElementById('accountsPage').classList.add('hidden');
+  document.getElementById('planningPage').classList.add('hidden');
+  document.getElementById('loginPage').classList.remove('hidden');
+  document.getElementById('username').value = '';
+  document.getElementById('password').value = '';
+  clearMessages();
+}
+
+function showPlanning() {
+  document.getElementById('accountsPage').classList.add('hidden');
+  document.getElementById('planningPage').classList.remove('hidden');
+  clearMessages();
+}
+
+function showAccounts() {
+  if (window.currentUser === 'admin') {
+    document.getElementById('planningPage').classList.add('hidden');
+    document.getElementById('accountsPage').classList.remove('hidden');
+    renderAccountsList();
+    clearMessages();
+  }
+}
+
+function renderAccountsList() {
+  const accounts = getAccounts();
+  const list = document.getElementById('accountsList');
+  list.innerHTML = '';
+  for (const user in accounts) {
+    const li = document.createElement('li');
+    li.className = "p-3 bg-gray-100 rounded shadow flex justify-between items-center";
+    li.textContent = user + (user === 'admin' ? " (admin)" : "");
+    if (user !== 'admin') {
+      const delBtn = document.createElement('button');
+      delBtn.textContent = "Verwijder";
+      delBtn.className = "text-red-500 hover:text-red-700";
+      delBtn.onclick = () => {
+        if (confirm(`Weet je zeker dat je gebruiker "${user}" wilt verwijderen?`)) {
+          delete accounts[user];
+          saveAccounts(accounts);
+          renderAccountsList();
+        }
+      };
+      li.appendChild(delBtn);
+    }
+    list.appendChild(li);
+  }
+}
+
+function addAccount() {
+  const newUser = document.getElementById('newUserInput').value.trim();
+  const newPass = document.getElementById('newPassInput').value.trim();
+  if (!newUser || !newPass) {
+    alert("Vul gebruikersnaam en wachtwoord in.");
+    return;
+  }
+  const accounts = getAccounts();
+  if (accounts[newUser]) {
+    alert("Deze gebruikersnaam bestaat al.");
+    return;
+  }
+  accounts[newUser] = newPass;
+  saveAccounts(accounts);
+  renderAccountsList();
+  document.getElementById('newUserInput').value = '';
+  document.getElementById('newPassInput').value = '';
+  alert("Account aangemaakt.");
+}
+
+function addTask() {
+  const stelplaats = document.getElementById('stelplaatsInput').value.trim();
+  const timeFrom = document.getElementById('timeFrom').value;
+  const timeTo = document.getElementById('timeTo').value;
+  const lijn = document.getElementById('lijnInput').value.trim();
+  const robloxUser = document.getElementById('robloxUserInput').value.trim();
+
+  clearMessages();
+
+  if (!stelplaats || !timeFrom || !timeTo || !lijn || !robloxUser) {
+    alert("Vul alle velden in.");
+    return;
+  }
+  if (timeFrom >= timeTo) {
+    alert("De begintijd moet voor de eindtijd liggen.");
+    return;
+  }
+
+  // Voeg taak toe aan lijst
+  const taskList = document.getElementById('taskList');
+  const li = document.createElement('li');
+  li.className = "p-3 bg-gray-100 rounded shadow";
+  li.textContent = `Stelplaats: ${stelplaats} | Van: ${timeFrom} | Tot: ${timeTo} | Lijn: ${lijn} | Roblox: ${robloxUser}`;
+  taskList.appendChild(li);
+
+  // Verstuur naar Discord webhook
+  const content = `Nieuwe planning:\nStelplaats: ${stelplaats}\nVan: ${timeFrom}\nTot: ${timeTo}\nLijn: ${lijn}\nRoblox username: ${robloxUser}`;
+
+  fetch(discordWebhookURL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content }),
+  }).then(res => {
+    if (res.ok) {
+      showDiscordResponse("Planning succesvol verstuurd naar Discord.");
+    } else {
+      showDiscordError("Fout bij versturen naar Discord.");
+    }
+  }).catch(() => {
+    showDiscordError("Kan geen verbinding maken met Discord.");
+  });
+
+  // Reset invoer velden
+  document.getElementById('stelplaatsInput').value = '';
+  document.getElementById('timeFrom').value = '';
+  document.getElementById('timeTo').value = '';
+  document.getElementById('lijnInput').value = '';
+  document.getElementById('robloxUserInput').value = '';
+}
+
+function showDiscordResponse(msg) {
+  const el = document.getElementById('discordResponse');
+  el.textContent = msg;
+  el.classList.remove('hidden');
+}
+
+function showDiscordError(msg) {
+  const el = document.getElementById('discordError');
+  el.textContent = msg;
+  el.classList.remove('hidden');
+}
+
+function clearMessages() {
+  document.getElementById('discordResponse').classList.add('hidden');
+  document.getElementById('discordError').classList.add('hidden');
+}
+
+</script>
+</body>
+</html>
